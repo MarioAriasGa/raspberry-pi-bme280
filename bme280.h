@@ -37,7 +37,7 @@ https://projects.drogon.net/raspberry-pi/wiringpi/i2c-library/
 #ifndef __BME280_H__
 #define __BME280_H__
 
-#define BME280_ADDRESS                0x76
+#define BME280_ADDRESS                0x77
 
 #define BME280_REGISTER_DIG_T1        0x88
 #define BME280_REGISTER_DIG_T2        0x8A
@@ -70,6 +70,19 @@ https://projects.drogon.net/raspberry-pi/wiringpi/i2c-library/
 #define BME280_REGISTER_HUMIDDATA     0xFD
 
 #define MEAN_SEA_LEVEL_PRESSURE       1013
+
+#define OVERSAMPLING_DISABLE 0x0
+#define OVERSAMPLING_1 0x1
+#define OVERSAMPLING_2 0x2
+#define OVERSAMPLING_4 0x3
+#define OVERSAMPLING_8 0x4
+#define OVERSAMPLING_16 0x5
+
+#define MODE_SLEEP 0x0
+#define MODE_FORCE 0x1
+#define MODE_NORMAL 0x3
+
+const uint8_t oversamp[6]={0,1,2,4,8,16};
 
 /*
 * Immutable calibration data read from bme280

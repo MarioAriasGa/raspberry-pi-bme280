@@ -54,37 +54,81 @@ https://github.com/adafruit/Adafruit_BME280_Library/blob/master/Adafruit_BME280.
 #include <stdint.h>
 #include <time.h>
 #include <math.h>
+#include <unistd.h>
 #include <wiringPiI2C.h>
 #include "bme280.h"
 
+int waitmeasure(uint8_t t, uint8_t p, uint8_t h){
+	int us = 1250;
+
+	if(t) us += 2300L*oversamp[t];
+	if(p) us += 2300L*oversamp[p]+575;
+	if(h) us += 2300L*oversamp[h]+575;
+
+	//printf("%d\n",us); fflush(NULL);
+	usleep(us);
+
+	return us;
+}
+
 int main() {
+	int fd = wiringPiI2CSetup(BME280_ADDRESS);
+	if(fd < 0) {
+		printf("Device not found");
+		return -1;
+	}
 
-  int fd = wiringPiI2CSetup(BME280_ADDRESS);
-  if(fd < 0) {
-    printf("Device not found");
-    return -1;
-  }
+	// Calibration
+	bme280_calib_data cal;
+	readCalibrationData(fd, &cal);
 
-  bme280_calib_data cal;
-  readCalibrationData(fd, &cal);
+	// Settings
+	uint8_t osrs_h = OVERSAMPLING_8;
+	uint8_t osrs_p = OVERSAMPLING_8;
+	uint8_t osrs_t = OVERSAMPLING_8;
+	uint8_t mode = MODE_FORCE;
 
-  wiringPiI2CWriteReg8(fd, 0xf2, 0x01);   // humidity oversampling x 1
-  wiringPiI2CWriteReg8(fd, 0xf4, 0x25);   // pressure and temperature oversampling x 1, mode normal
+	uint8_t ctrl_meas = mode | (osrs_p<<2) | (osrs_t<<5);
 
-  bme280_raw_data raw;
-  getRawData(fd, &raw);
+	printf("date,time,timestamp,temperature,humidity,pressure,altitude,dew\n");
 
-  int32_t t_fine = getTemperatureCalibration(&cal, raw.temperature);
-  float t = compensateTemperature(t_fine); // C
-  float p = compensatePressure(raw.pressure, &cal, t_fine) / 100; // hPa
-  float h = compensateHumidity(raw.humidity, &cal, t_fine);       // %
-  float a = getAltitude(p);                         // meters
+	for(;;){
+		// Start write
+		wiringPiI2CWriteReg8(fd, BME280_REGISTER_CONTROLHUMID, osrs_h);
+		wiringPiI2CWriteReg8(fd, BME280_REGISTER_CONTROL, ctrl_meas);
 
-  printf("{\"sensor\":\"bme280\", \"humidity\":%.2f, \"pressure\":%.2f,"
-    " \"temperature\":%.2f, \"altitude\":%.2f, \"timestamp\":%d}\n",
-    h, p, t, a, (int)time(NULL));
+		// Wait for measure
+		waitmeasure(osrs_t, osrs_p, osrs_h);
 
-  return 0;
+		// Get measure
+		bme280_raw_data raw;
+		getRawData(fd, &raw);
+
+		// Apply calibration
+		int32_t t_fine = getTemperatureCalibration(&cal, raw.temperature);
+		float t = compensateTemperature(t_fine); // C
+		float p = compensatePressure(raw.pressure, &cal, t_fine) / 100; // hPa
+		float h = compensateHumidity(raw.humidity, &cal, t_fine);       // %
+		float a = getAltitude(p);                         // meters
+
+		// Extra formulas
+		float dew = pow(h/100.0,1.0/8.0)*(112.0+0.9*t)+0.1*t-112.0; // C
+
+		// Timestamp / Date
+		time_t rawtime;
+		time(&rawtime);
+		struct tm *info = localtime( &rawtime ); 
+		char buffer[80];
+		strftime(buffer,80,"%Y-%m-%d,%H:%M:%S", info);
+
+		//printf("{\"sensor\":\"bme280\", \"humidity\":%.2f, \"pressure\":%.2f," " \"temperature\":%.2f, \"altitude\":%.2f, \"timestamp\":%d}\n", h, p, t, a, (int)time(NULL));
+		printf("%s,%d,%.2f,%.2f,%.2f,%.2f,%.2f\n",buffer,(int)rawtime,t,h,p,a,dew);
+		fflush(NULL);
+
+		//usleep(100000);
+		sleep(10);
+	}
+	return 0;
 }
 
 int32_t getTemperatureCalibration(bme280_calib_data *cal, int32_t adc_T) {

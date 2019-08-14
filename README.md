@@ -1,3 +1,10 @@
+```
+Mario's changes:
+Show CSV for spreadsheets instead of JSON
+Use Force mode to measure on demand instead of constantly.
+Constants to change oversampling.
+Add calculation of Dew point from Temperature/Humidity
+
 
 This piece of code was combined from several sources:
 
